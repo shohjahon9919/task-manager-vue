@@ -11,11 +11,64 @@
 </head>
 <body>
   <div id="app">
-    <!-- Ваш код Vue.js из задания -->
+    <!-- Форма для добавления задач -->
+    <form @submit.prevent="addTask">
+      <input v-model="newTask.text" placeholder="Введите задачу" required>
+      <input type="date" v-model="newTask.deadline" required>
+      <button type="submit">Добавить</button>
+    </form>
+
+    <!-- Список задач -->
+    <ul>
+      <li v-for="(task, index) in tasks" :key="index"
+          :class="{ done: task.done, overdue: isOverdue(task) && !task.done }">
+        <input type="checkbox" v-model="task.done">
+        {{ task.text }} — до {{ task.deadline }}
+        <button @click="deleteTask(index)">Удалить</button>
+      </li>
+    </ul>
   </div>
+
   <script>
     const { createApp } = Vue;
-    // Ваш JavaScript-код из задания
+
+    createApp({
+      data() {
+        return {
+          newTask: {
+            text: '',
+            deadline: ''
+          },
+          tasks: []
+        };
+      },
+      methods: {
+        addTask() {
+          this.tasks.push({ ...this.newTask, done: false });
+          this.newTask.text = '';
+          this.newTask.deadline = '';
+          this.saveTasks();
+        },
+        deleteTask(index) {
+          this.tasks.splice(index, 1);
+          this.saveTasks();
+        },
+        isOverdue(task) {
+          const today = new Date().toISOString().split('T')[0];
+          return task.deadline < today;
+        },
+        saveTasks() {
+          localStorage.setItem('tasks', JSON.stringify(this.tasks));
+        },
+        loadTasks() {
+          const saved = localStorage.getItem('tasks');
+          if (saved) this.tasks = JSON.parse(saved);
+        }
+      },
+      mounted() {
+        this.loadTasks();
+      }
+    }).mount('#app');
   </script>
 </body>
 </html>
