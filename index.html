@@ -2,73 +2,198 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Менеджер задач на Vue.js</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <style>
-    .done { text-decoration: line-through; color: gray; }
-    .overdue { color: red; }
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .task-form {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #f5f5f5;
+      border-radius: 5px;
+    }
+    .task-list {
+      list-style: none;
+      padding: 0;
+    }
+    .task-item {
+      display: flex;
+      align-items: center;
+      padding: 10px;
+      margin-bottom: 8px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .task-item.done {
+      text-decoration: line-through;
+      color: #888;
+    }
+    .task-item.overdue {
+      border-left: 3px solid #ff5252;
+    }
+    .task-text {
+      flex-grow: 1;
+      margin: 0 10px;
+    }
+    .task-date {
+      font-size: 0.9em;
+      color: #666;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    button.delete {
+      background: #f44336;
+      margin-left: 10px;
+    }
+    input[type="text"], input[type="date"] {
+      padding: 8px;
+      margin-right: 10px;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+    }
   </style>
 </head>
 <body>
   <div id="app">
-    <!-- Форма для добавления задач -->
-    <form @submit.prevent="addTask">
-      <input v-model="newTask.text" placeholder="Введите задачу" required>
-      <input type="date" v-model="newTask.deadline" required>
-      <button type="submit">Добавить</button>
-    </form>
-
-    <!-- Список задач -->
-    <ul>
-      <li v-for="(task, index) in tasks" :key="index"
-          :class="{ done: task.done, overdue: isOverdue(task) && !task.done }">
-        <input type="checkbox" v-model="task.done">
-        {{ task.text }} — до {{ task.deadline }}
-        <button @click="deleteTask(index)">Удалить</button>
-      </li>
-    </ul>
+    <task-form @add-task="addTask"></task-form>
+    <task-list 
+      :tasks="tasks" 
+      @toggle-done="toggleTaskDone" 
+      @delete-task="deleteTask"
+    ></task-list>
   </div>
 
   <script>
     const { createApp } = Vue;
-
-    createApp({
+    
+    // Компонент формы добавления задачи
+    const TaskForm = {
+      template: `
+        <div class="task-form">
+          <form @submit.prevent="$emit('add-task', newTask)">
+            <input 
+              type="text" 
+              v-model="newTask.text" 
+              placeholder="Введите задачу" 
+              required
+            >
+            <input 
+              type="date" 
+              v-model="newTask.deadline" 
+              required
+            >
+            <button type="submit">Добавить</button>
+          </form>
+        </div>
+      `,
       data() {
         return {
           newTask: {
             text: '',
             deadline: ''
-          },
+          }
+        };
+      }
+    };
+    
+    // Компонент списка задач
+    const TaskList = {
+      props: ['tasks'],
+      template: `
+        <ul class="task-list">
+          <li 
+            v-for="(task, index) in tasks" 
+            :key="index"
+            class="task-item"
+            :class="{ done: task.done, overdue: isOverdue(task) && !task.done }"
+          >
+            <input 
+              type="checkbox" 
+              v-model="task.done"
+              @change="$emit('toggle-done', index)"
+            >
+            <span class="task-text">{{ task.text }}</span>
+            <span class="task-date">— до {{ formatDate(task.deadline) }}</span>
+            <button 
+              class="delete"
+              @click="$emit('delete-task', index)"
+            >
+              Удалить
+            </button>
+          </li>
+        </ul>
+      `,
+      methods: {
+        isOverdue(task) {
+          if (!task.deadline) return false;
+          const today = new Date().toISOString().split('T')[0];
+          return task.deadline < today && !task.done;
+        },
+        formatDate(dateString) {
+          if (!dateString) return '';
+          const options = { year: 'numeric', month: 'long', day: 'numeric' };
+          return new Date(dateString).toLocaleDateString('ru-RU', options);
+        }
+      }
+    };
+    
+    // Основное приложение
+    const app = createApp({
+      components: {
+        TaskForm,
+        TaskList
+      },
+      data() {
+        return {
           tasks: []
         };
       },
       methods: {
-        addTask() {
-          this.tasks.push({ ...this.newTask, done: false });
-          this.newTask.text = '';
-          this.newTask.deadline = '';
+        addTask(newTask) {
+          this.tasks.push({
+            text: newTask.text,
+            deadline: newTask.deadline,
+            done: false
+          });
+          this.saveTasks();
+        },
+        toggleTaskDone(index) {
+          this.tasks[index].done = !this.tasks[index].done;
           this.saveTasks();
         },
         deleteTask(index) {
           this.tasks.splice(index, 1);
           this.saveTasks();
         },
-        isOverdue(task) {
-          const today = new Date().toISOString().split('T')[0];
-          return task.deadline < today;
-        },
         saveTasks() {
           localStorage.setItem('tasks', JSON.stringify(this.tasks));
         },
         loadTasks() {
-          const saved = localStorage.getItem('tasks');
-          if (saved) this.tasks = JSON.parse(saved);
+          const savedTasks = localStorage.getItem('tasks');
+          if (savedTasks) {
+            this.tasks = JSON.parse(savedTasks);
+          }
         }
       },
       mounted() {
         this.loadTasks();
       }
-    }).mount('#app');
+    });
+    
+    app.mount('#app');
   </script>
 </body>
 </html>
