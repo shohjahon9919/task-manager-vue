@@ -3,197 +3,359 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Менеджер задач на Vue.js</title>
+  <title>Профессиональный Менеджер Задач</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1/build/global/luxon.min.js"></script>
   <style>
+    :root {
+      --primary: #4a6bdf;
+      --danger: #ff4757;
+      --success: #2ed573;
+      --warning: #ffa502;
+      --dark: #2f3542;
+    }
     body {
-      font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 20px;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f5f7fa;
+      color: var(--dark);
     }
-    .task-form {
-      margin-bottom: 20px;
-      padding: 15px;
-      background: #f5f5f5;
-      border-radius: 5px;
+    .container {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     }
-    .task-list {
-      list-style: none;
-      padding: 0;
+    .task-card {
+      background: white;
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      transition: all 0.2s ease;
+      border-left: 4px solid transparent;
     }
-    .task-item {
-      display: flex;
-      align-items: center;
-      padding: 10px;
-      margin-bottom: 8px;
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+    .task-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
-    .task-item.done {
-      text-decoration: line-through;
-      color: #888;
+    .task-card.overdue {
+      border-left-color: var(--danger);
     }
-    .task-item.overdue {
-      border-left: 3px solid #ff5252;
+    .task-card.completed {
+      opacity: 0.8;
     }
-    .task-text {
-      flex-grow: 1;
-      margin: 0 10px;
+    .priority-high {
+      border-left-color: var(--danger) !important;
     }
-    .task-date {
-      font-size: 0.9em;
-      color: #666;
+    .priority-medium {
+      border-left-color: var(--warning) !important;
     }
-    button {
-      background: #4CAF50;
-      color: white;
-      border: none;
-      padding: 5px 10px;
-      border-radius: 3px;
-      cursor: pointer;
-    }
-    button.delete {
-      background: #f44336;
-      margin-left: 10px;
-    }
-    input[type="text"], input[type="date"] {
-      padding: 8px;
-      margin-right: 10px;
-      border: 1px solid #ddd;
-      border-radius: 3px;
+    .tag {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      background: #e0e5ff;
+      color: var(--primary);
+      border-radius: 100px;
+      font-size: 0.75rem;
+      margin-right: 0.5rem;
     }
   </style>
 </head>
 <body>
   <div id="app">
-    <task-form @add-task="addTask"></task-form>
-    <task-list 
-      :tasks="tasks" 
-      @toggle-done="toggleTaskDone" 
-      @delete-task="deleteTask"
-    ></task-list>
+    <div class="container">
+      <h1>Менеджер задач</h1>
+      
+      <!-- Фильтры и поиск -->
+      <div class="controls">
+        <div class="filters">
+          <button 
+            v-for="filter in filters"
+            :key="filter.value"
+            @click="activeFilter = filter.value"
+            :class="{ active: activeFilter === filter.value }"
+          >
+            {{ filter.label }}
+          </button>
+        </div>
+        <input 
+          type="text" 
+          v-model="searchQuery" 
+          placeholder="Поиск задач..."
+          class="search-input"
+        >
+      </div>
+      
+      <!-- Форма добавления задачи -->
+      <div class="task-form">
+        <input 
+          type="text" 
+          v-model="newTask.title" 
+          placeholder="Название задачи"
+          class="task-input"
+        >
+        <textarea
+          v-model="newTask.description"
+          placeholder="Описание задачи"
+          rows="2"
+        ></textarea>
+        
+        <div class="form-row">
+          <div>
+            <label>Дата выполнения:</label>
+            <input type="date" v-model="newTask.dueDate">
+          </div>
+          
+          <div>
+            <label>Приоритет:</label>
+            <select v-model="newTask.priority">
+              <option value="low">Низкий</option>
+              <option value="medium">Средний</option>
+              <option value="high">Высокий</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="tag-input">
+          <input 
+            type="text" 
+            v-model="tagInput"
+            placeholder="Добавить тег"
+            @keydown.enter="addTag"
+          >
+          <div class="tags">
+            <span class="tag" v-for="(tag, index) in newTask.tags" :key="index">
+              {{ tag }} <span @click="removeTag(index)">×</span>
+            </span>
+          </div>
+        </div>
+        
+        <button @click="addTask" class="add-button">
+          Добавить задачу
+        </button>
+      </div>
+      
+      <!-- Список задач -->
+      <div class="task-list">
+        <div 
+          v-for="(task, index) in filteredTasks"
+          :key="task.id"
+          class="task-card"
+          :class="{
+            completed: task.completed,
+            overdue: isOverdue(task),
+            [`priority-${task.priority}`]: true
+          }"
+        >
+          <div class="task-header">
+            <input 
+              type="checkbox" 
+              v-model="task.completed"
+              @change="updateTask(task)"
+            >
+            <h3>{{ task.title }}</h3>
+            <button @click="deleteTask(task.id)" class="delete-button">
+              Удалить
+            </button>
+          </div>
+          
+          <p v-if="task.description" class="task-description">
+            {{ task.description }}
+          </p>
+          
+          <div class="task-meta">
+            <span class="due-date">
+              <strong>Срок:</strong> 
+              {{ formatDate(task.dueDate) }}
+              <span v-if="isOverdue(task)" class="overdue-badge">
+                Просрочено
+              </span>
+            </span>
+            
+            <span class="priority" :class="`priority-${task.priority}`">
+              {{ getPriorityLabel(task.priority) }}
+            </span>
+          </div>
+          
+          <div class="tags" v-if="task.tags.length">
+            <span class="tag" v-for="(tag, tagIndex) in task.tags" :key="tagIndex">
+              {{ tag }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
-    const { createApp } = Vue;
+    const { createApp, ref, computed, onMounted } = Vue;
     
-    // Компонент формы добавления задачи
-    const TaskForm = {
-      template: `
-        <div class="task-form">
-          <form @submit.prevent="$emit('add-task', newTask)">
-            <input 
-              type="text" 
-              v-model="newTask.text" 
-              placeholder="Введите задачу" 
-              required
-            >
-            <input 
-              type="date" 
-              v-model="newTask.deadline" 
-              required
-            >
-            <button type="submit">Добавить</button>
-          </form>
-        </div>
-      `,
-      data() {
-        return {
-          newTask: {
-            text: '',
-            deadline: ''
-          }
-        };
-      }
-    };
-    
-    // Компонент списка задач
-    const TaskList = {
-      props: ['tasks'],
-      template: `
-        <ul class="task-list">
-          <li 
-            v-for="(task, index) in tasks" 
-            :key="index"
-            class="task-item"
-            :class="{ done: task.done, overdue: isOverdue(task) && !task.done }"
-          >
-            <input 
-              type="checkbox" 
-              v-model="task.done"
-              @change="$emit('toggle-done', index)"
-            >
-            <span class="task-text">{{ task.text }}</span>
-            <span class="task-date">— до {{ formatDate(task.deadline) }}</span>
-            <button 
-              class="delete"
-              @click="$emit('delete-task', index)"
-            >
-              Удалить
-            </button>
-          </li>
-        </ul>
-      `,
-      methods: {
-        isOverdue(task) {
-          if (!task.deadline) return false;
-          const today = new Date().toISOString().split('T')[0];
-          return task.deadline < today && !task.done;
-        },
-        formatDate(dateString) {
-          if (!dateString) return '';
-          const options = { year: 'numeric', month: 'long', day: 'numeric' };
-          return new Date(dateString).toLocaleDateString('ru-RU', options);
-        }
-      }
-    };
-    
-    // Основное приложение
-    const app = createApp({
-      components: {
-        TaskForm,
-        TaskList
-      },
-      data() {
-        return {
-          tasks: []
-        };
-      },
-      methods: {
-        addTask(newTask) {
-          this.tasks.push({
-            text: newTask.text,
-            deadline: newTask.deadline,
-            done: false
-          });
-          this.saveTasks();
-        },
-        toggleTaskDone(index) {
-          this.tasks[index].done = !this.tasks[index].done;
-          this.saveTasks();
-        },
-        deleteTask(index) {
-          this.tasks.splice(index, 1);
-          this.saveTasks();
-        },
-        saveTasks() {
-          localStorage.setItem('tasks', JSON.stringify(this.tasks));
-        },
-        loadTasks() {
+    createApp({
+      setup() {
+        // Состояние
+        const tasks = ref([]);
+        const newTask = ref({
+          title: '',
+          description: '',
+          dueDate: '',
+          priority: 'medium',
+          tags: [],
+          completed: false
+        });
+        const tagInput = ref('');
+        const searchQuery = ref('');
+        const activeFilter = ref('all');
+        
+        // Фильтры
+        const filters = [
+          { value: 'all', label: 'Все задачи' },
+          { value: 'active', label: 'Активные' },
+          { value: 'completed', label: 'Завершенные' },
+          { value: 'overdue', label: 'Просроченные' }
+        ];
+        
+        // Получение задач из localStorage
+        const loadTasks = () => {
           const savedTasks = localStorage.getItem('tasks');
           if (savedTasks) {
-            this.tasks = JSON.parse(savedTasks);
+            tasks.value = JSON.parse(savedTasks);
           }
-        }
-      },
-      mounted() {
-        this.loadTasks();
+        };
+        
+        // Сохранение задач в localStorage
+        const saveTasks = () => {
+          localStorage.setItem('tasks', JSON.stringify(tasks.value));
+        };
+        
+        // Добавление новой задачи
+        const addTask = () => {
+          if (!newTask.value.title.trim()) return;
+          
+          tasks.value.push({
+            id: Date.now(),
+            ...newTask.value
+          });
+          
+          // Сброс формы
+          newTask.value = {
+            title: '',
+            description: '',
+            dueDate: '',
+            priority: 'medium',
+            tags: [],
+            completed: false
+          };
+          
+          saveTasks();
+        };
+        
+        // Удаление задачи
+        const deleteTask = (id) => {
+          tasks.value = tasks.value.filter(task => task.id !== id);
+          saveTasks();
+        };
+        
+        // Обновление задачи
+        const updateTask = (task) => {
+          saveTasks();
+        };
+        
+        // Добавление тега
+        const addTag = () => {
+          if (tagInput.value.trim() && !newTask.value.tags.includes(tagInput.value.trim())) {
+            newTask.value.tags.push(tagInput.value.trim());
+            tagInput.value = '';
+          }
+        };
+        
+        // Удаление тега
+        const removeTag = (index) => {
+          newTask.value.tags.splice(index, 1);
+        };
+        
+        // Проверка просроченности задачи
+        const isOverdue = (task) => {
+          if (!task.dueDate || task.completed) return false;
+          const today = luxon.DateTime.now().toISODate();
+          return task.dueDate < today;
+        };
+        
+        // Форматирование даты
+        const formatDate = (dateString) => {
+          if (!dateString) return 'Не указано';
+          return luxon.DateTime.fromISO(dateString).setLocale('ru').toLocaleString();
+        };
+        
+        // Получение метки приоритета
+        const getPriorityLabel = (priority) => {
+          const labels = {
+            low: 'Низкий',
+            medium: 'Средний',
+            high: 'Высокий'
+          };
+          return labels[priority];
+        };
+        
+        // Фильтрация задач
+        const filteredTasks = computed(() => {
+          let result = tasks.value;
+          
+          // Фильтрация по статусу
+          if (activeFilter.value === 'active') {
+            result = result.filter(task => !task.completed);
+          } else if (activeFilter.value === 'completed') {
+            result = result.filter(task => task.completed);
+          } else if (activeFilter.value === 'overdue') {
+            result = result.filter(task => isOverdue(task));
+          }
+          
+          // Поиск
+          if (searchQuery.value) {
+            const query = searchQuery.value.toLowerCase();
+            result = result.filter(task => 
+              task.title.toLowerCase().includes(query) || 
+              task.description.toLowerCase().includes(query) ||
+              task.tags.some(tag => tag.toLowerCase().includes(query))
+          }
+          
+          // Сортировка
+          return result.sort((a, b) => {
+            // Сначала просроченные
+            if (isOverdue(a) && !isOverdue(b)) return -1;
+            if (!isOverdue(a) && isOverdue(b)) return 1;
+            
+            // Затем по приоритету
+            const priorityOrder = { high: 3, medium: 2, low: 1 };
+            return priorityOrder[b.priority] - priorityOrder[a.priority];
+          });
+        });
+        
+        // Загрузка задач при монтировании
+        onMounted(() => {
+          loadTasks();
+        });
+        
+        return {
+          tasks,
+          newTask,
+          tagInput,
+          searchQuery,
+          activeFilter,
+          filters,
+          filteredTasks,
+          addTask,
+          deleteTask,
+          updateTask,
+          addTag,
+          removeTag,
+          isOverdue,
+          formatDate,
+          getPriorityLabel
+        };
       }
-    });
-    
-    app.mount('#app');
+    }).mount('#app');
   </script>
 </body>
 </html>
